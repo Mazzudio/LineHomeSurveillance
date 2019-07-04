@@ -18,19 +18,5 @@ namespace LineHomeCamera
                    ResponseFormat = WebMessageFormat.Json,
                    UriTemplate = "notify")]
         void Notify(string destination, List<EventItem> events);
-
-        [WebGet(ResponseFormat = WebMessageFormat.Json,
-             UriTemplate = "camera/all")]
-        List<string> GetAvailableCamera();
-
-        //[WebGet(ResponseFormat = WebMessageFormat.Json,
-        //     UriTemplate = "camera/view")]
-        //string GetCameraImage();
-
-        [OperationContract]
-        [WebInvoke(BodyStyle = WebMessageBodyStyle.WrappedRequest,
-                   ResponseFormat = WebMessageFormat.Json,
-                   UriTemplate = "camera/update")]
-        bool UpdateCameraInfo(int id, string ip, string user, string password, string brand);
     }
 }

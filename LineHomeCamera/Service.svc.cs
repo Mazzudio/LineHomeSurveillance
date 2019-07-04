@@ -4,10 +4,7 @@ using System.Configuration;
 using System.IO;
 using System.Linq;
 using System.Net;
-using System.Runtime.Serialization;
-using System.ServiceModel;
 using System.ServiceModel.Web;
-using System.Text;
 using System.Web.Script.Serialization;
 
 using Mazzudio.Line;
@@ -23,8 +20,6 @@ namespace LineHomeCamera
         {
             try
             {
-                _logger.Info("Service call");
-
                 _domainName = ConfigurationManager.AppSettings["domainName"].ToString(); 
                 _accessToken = ConfigurationManager.AppSettings["lineServiceToken"].ToString();
             }
@@ -33,81 +28,14 @@ namespace LineHomeCamera
                 _logger.Error(ex.Message);
             }
         }
-
-        public List<string> GetAvailableCamera()
-        {
-            try
-            {
-                var lines = File.ReadAllLines(System.Web.Hosting.HostingEnvironment.MapPath("~/camera.info"));
-
-                return lines.ToList();
-            }
-            catch(Exception ex)
-            {
-                _logger.Error("get-camera-list" + ",ERROR>" + ex.Message);
-                return null;
-            } 
-        }
-
-        public bool UpdateCameraInfo(int id, string ip, string user, string password, string brand)
-        {
-            try
-            {
-                var lines = File.ReadAllLines(System.Web.Hosting.HostingEnvironment.MapPath("~/camera.info"));
-
-                Dictionary<int, CameraInfo> cameras = new Dictionary<int, CameraInfo>();
-                foreach(var line in lines)
-                {
-                    var columns = line.Split(new char[] { '|' });
-                    int cameraId = 0;
-                    if(int.TryParse(columns[0], out cameraId))
-                    {
-                        if (!cameras.ContainsKey(cameraId))
-                        {
-                            cameras.Add(cameraId, new CameraInfo
-                            {
-                                Id = cameraId,
-                                Api = columns[1],
-                                StillImageUrl = columns[2],
-                                UserName = columns[3],
-                                Password = columns[4]
-                            });
-                        } 
-                    } 
-                }
-
-                if (cameras.ContainsKey(id))
-                {
-                    cameras[id].Api = brand;
-                    cameras[id].StillImageUrl = ip;
-                    cameras[id].UserName = user;
-                    cameras[id].Password = password;
-
-                    // Store back to file.
-                    var writeLines = new List<string>();
-                    foreach(var content in cameras)
-                    {
-                        writeLines.Add(string.Format("{0}|{1}|{2}|{3}|{4}", content.Value.Id, content.Value.Api, content.Value.StillImageUrl, content.Value.UserName, content.Value.Password));
-                    }
-                    File.WriteAllLines(System.Web.Hosting.HostingEnvironment.MapPath("~/camera.info"), writeLines);
-                    return true;
-                }
-                return false;
-            }
-            catch (Exception ex)
-            {
-                _logger.Error("update-camera >> id:" + id + ",ERROR>" + ex.Message);
-                return false;
-            }
-        }
-
+        
         public void Notify(string destination, List<EventItem> events)
         {
             try
             {
                 LogNotify(destination, events);
                 string[] specificChannelKeywords = new[] { "camera", "cam", "c", "picture", "pic", "p", "channel", "ch", "กล้อง" };
-                //string[] allChannelKeywords = new[] { "cameras", "pics", "channels" };
+                
                 string[] interestEventTypes = new string[] { "follow", "message" };
                 LineClient client = new LineClient(_accessToken);
                 foreach (var ev in events)
@@ -143,7 +71,7 @@ namespace LineHomeCamera
                                                 });
                                                 var replyRes = client.ReplyToUser(ev.replyToken);
                                                 validCommand = true;
-                                                _logger.Debug("reply-image>>" + imageUrl + ";res:" + replyRes.Success.ToString() + ">" + replyRes.Message);
+                                                _logger.Debug("reply-image>>" + imageUrl + ", res:" + replyRes.Success.ToString() + ", msg:" + replyRes.Message);
                                             }
                                         }
                                     }
@@ -156,10 +84,22 @@ namespace LineHomeCamera
                                         type = "text",
                                         text = "คำสังไม่ถูกต้อง หรือไม่พบช่องที่ระบุ กรุณาลองใหม่อีกครั้ง"
                                     });
-                                    _logger.Debug("reply-invalid message>> " + ev.message.text);
+                                    
                                     var replyRes = client.ReplyToUser(ev.replyToken);
+                                    _logger.Debug("reply-invalid message>> " + ev.message.text + ", res:" + replyRes.Success.ToString() + ", msg:" + replyRes.Message);
                                 }
                             }
+                        }
+                        else if (ev.type == "follow")
+                        {
+                            client.AddMessageQueue(new SendMessageItem
+                            {
+                                type = "text",
+                                text = "ยินดีต้อนรับเข้าสู่ระบบดูภาพนิ่งจากกล้องผ่าน LINE\r\nคุณสามารถพิมพ์คำสั่งเพื่อดูกล้องได้ดังนี้\r\n\r\ncam [เลขที่]\r\ncamera [เลขที่]\r\npic [เลขที่]\r\npicture [เลขที่]"
+                            });
+
+                            var replyRes = client.ReplyToUser(ev.replyToken);
+                            _logger.Debug("reply-greeting message>> res:" + replyRes.Success.ToString() + ", msg:" + replyRes.Message);
                         }
                     }
                 }
@@ -174,7 +114,6 @@ namespace LineHomeCamera
         {
             try
             {
-                // Load config to dictionary.
                 var lines = File.ReadAllLines(System.Web.Hosting.HostingEnvironment.MapPath("~/camera.info"));
 
                 Dictionary<int, CameraInfo> cameras = new Dictionary<int, CameraInfo>();
@@ -205,12 +144,6 @@ namespace LineHomeCamera
             {
                 return null;
             }
-            //return new CameraInfo
-            //{
-            //    StillImageUrl = "http://192.168.1.203/ISAPI/Streaming/channels/101/picture",
-            //    UserName = "admin",
-            //    Password = "admin123"
-            //};
         }
 
         private string GetCameraImage(string url, string user, string password)
@@ -251,11 +184,11 @@ namespace LineHomeCamera
                 var serializer = new JavaScriptSerializer();
                 string param = serializer.Serialize(events);
                  
-                _logger.Info("Notify-incoming:" + "des:" + destination, "", "events:" + param);
+                _logger.Info("Notify-incoming>> " + "des:" + destination + ", events:" + param);
             }
             catch (Exception ex)
             {
-                _logger.Error("Notify-incoming:" + "des:" + destination + ", error:" + ex.Message);
+                _logger.Error("Notify-incoming>> " + "des:" + destination + ", error:" + ex.Message);
             }
         }
     }
@@ -263,13 +196,9 @@ namespace LineHomeCamera
     public class CameraInfo
     {
         public int Id { get; set; }
-
         public string StillImageUrl { get; set; }
-
         public string UserName { get; set; }
-
         public string Password { get; set; }
-
         public string Api { get; set; } 
     }
 }
